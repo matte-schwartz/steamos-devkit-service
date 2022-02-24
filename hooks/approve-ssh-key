@@ -11,11 +11,7 @@ ENABLE_SSHD = '/usr/bin/steamos-polkit-helpers/steamos-enable-sshd'
 
 logger = logging.getLogger(os.path.realpath(__file__))
 
-try:
-    import steam_devkit.utils
-except:
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    import steam_devkit.utils
+import devkit_utils
 
 if __name__ == '__main__':
     logger.setLevel(logging.INFO)
@@ -44,7 +40,7 @@ if __name__ == '__main__':
     key_identifier = request.split(' ')[2]
     request = f'Development host at IP {requestIP} key: {key_identifier!r}'
 
-    steam_devkit.utils.validate_steam_client()
+    devkit_utils.validate_steam_client()
 
     with tempfile.TemporaryDirectory(prefix='approve-ssh-key') as tempdir:
         logger.debug('Issue approve-ssh-key request to the running Steam client')
@@ -53,8 +49,8 @@ if __name__ == '__main__':
             urllib_quote_plus(response),
             urllib_quote_plus(request),
         )
-        steam_devkit.utils.execute_steam_client_command(cmd)
-        with steam_devkit.utils.wait_on_file_response(response, timeout=30) as f:
+        devkit_utils.execute_steam_client_command(cmd)
+        with devkit_utils.wait_on_file_response(response, timeout=30) as f:
             logger.debug('Got response from Steam client')
             # Make sure sshd is enabled to support development features
             if os.path.exists(ENABLE_SSHD):
