@@ -8,4 +8,9 @@ dependencies = [
     dependency('avahi-glib'),
     dependency('libsystemd'),
 ]
-executable('steamos-devkit-service', ['main.c', 'avahi-service.c', 'utils.c', 'json.c'], dependencies : dependencies)
+executable(
+    'steamos-devkit-service',
+    ['main.c', 'avahi-service.c', 'utils.c', 'json.c'],
+    dependencies : dependencies,
+    install: true,
+)
