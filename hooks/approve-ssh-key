@@ -6,6 +6,7 @@ import logging
 import tempfile
 from urllib.parse import quote_plus as urllib_quote_plus
 import subprocess
+import json
 
 ENABLE_SSHD = '/usr/bin/steamos-polkit-helpers/steamos-enable-sshd'
 
@@ -25,35 +26,46 @@ if __name__ == '__main__':
     try:
         requestIP = sys.argv[2]
     except NameError:
-        logger.debug('request IP not given as argument to hook')
+        logger.warning('request IP not given as argument to hook')
         pass
-
-    if os.environ.get('DEVKIT_BYPASS_STEAM_PROMPT', None) == '1':
-        # Still using for the standalone dev-kit service application
-        logger.warning('Bypassing the Steam client approval - this is potentially insecure!')
-        MAGIC_PHRASE = '900b919520e4cf601998a71eec318fec'
-        tokens = request.split(' ')
-        if tokens[-1].strip('\n') != MAGIC_PHRASE:
-            raise Exception('Invalid request')
-        sys.exit(0)
 
     key_identifier = request.split(' ')[2]
     request = f'Development host at IP {requestIP} key: {key_identifier!r}'
 
-    devkit_utils.validate_steam_client()
+    ret = {}
 
-    with tempfile.TemporaryDirectory(prefix='approve-ssh-key') as tempdir:
-        logger.debug('Issue approve-ssh-key request to the running Steam client')
-        response = os.path.join(tempdir, 'response')
-        cmd = 'approve-ssh-key?response={}&request={}'.format(
-            urllib_quote_plus(response),
-            urllib_quote_plus(request),
-        )
-        devkit_utils.execute_steam_client_command(cmd)
-        with devkit_utils.wait_on_file_response(response, timeout=30) as f:
-            logger.debug('Got response from Steam client')
-            # Make sure sshd is enabled to support development features
-            if os.path.exists(ENABLE_SSHD):
-                subprocess.check_call(ENABLE_SSHD)
-            else:
-                subprocess.check_call('sudo systemctl enable --now sshd', shell=True)
+    try:
+        devkit_utils.validate_steam_client()
+    except devkit_utils.SteamClientNotRunningException as e:
+        msg = 'Steam is not running'
+        logger.warning(msg)
+        ret['error'] = msg
+    else:
+        with tempfile.TemporaryDirectory(prefix='approve-ssh-key') as tempdir:
+            logger.info('Sending pairing request to Steam')
+            response = os.path.join(tempdir, 'response')
+            cmd = 'approve-ssh-key?response={}&request={}'.format(
+                urllib_quote_plus(response),
+                urllib_quote_plus(request),
+            )
+            devkit_utils.execute_steam_client_command(cmd)
+            try:
+                with devkit_utils.wait_on_file_response(response, timeout=30) as f:
+                    logger.debug('Got response from Steam client')
+                    # Make sure sshd is enabled to support development features
+                    if os.path.exists(ENABLE_SSHD):
+                        subprocess.check_call(ENABLE_SSHD)
+                    else:
+                        subprocess.check_call('sudo systemctl enable --now sshd', shell=True)
+            except devkit_utils.SteamResponse_Timeout:
+                ret['error'] = 'timeout - Steam did not respond to the pairing request'
+            except devkit_utils.SteamResponse_Error as e:
+                ret['error'] = e.error_response
+
+    # json dictionary response gets written to stdout
+    # NOTE: the devkit service unfortunately smashes stdout/stderr all together in a text response, but we can still work with that
+    sys.stdout.flush()
+    sys.stderr.flush()
+    print(json.dumps(ret))
+    retcode = 1 if 'error' in ret else 0
+    sys.exit(retcode)
