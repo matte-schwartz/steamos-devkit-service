@@ -46,6 +46,12 @@ use_default_hooks = True
 global_config = configparser.ConfigParser()
 global_config.read(["/etc/steamos-devkit/steamos-devkit.conf", "/usr/share/steamos-devkit/steamos-devkit.conf"])
 
+user_config_path = os.path.join(os.path.expanduser('~'), '.config', PACKAGE, PACKAGE + '.conf')
+print("Trying to read user config from {}".format(user_config_path))
+
+user_config = configparser.ConfigParser()
+user_config.read(user_config_path)
+
 def find_hook(hook_dirs, use_default_hooks, name):
     # First see if it exists in the given paths.
     for path in hook_dirs:
@@ -139,8 +145,17 @@ class DevkitHandler(BaseHTTPRequestHandler):
 
 class DevkitService:
     def __init__(self):
-        # TODO: Get from config if set
         self.port = SERVICE_PORT
+
+        if 'Settings' in global_config:
+            settings = global_config["Settings"]
+            if 'Port' in settings:
+                self.port = int(settings["Port"])
+
+        if 'Settings' in user_config:
+            settings = user_config["Settings"]
+            if 'Port' in settings:
+                self.port = int(settings["Port"])
 
         self.httpd = socketserver.TCPServer(("", self.port), DevkitHandler, bind_and_activate=False)
         print("serving at port: {}".format(self.port))
