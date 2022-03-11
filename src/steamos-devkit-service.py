@@ -38,6 +38,7 @@ DEVKIT_HOOKS_DIR = "/usr/share/steamos-devkit/hooks"
 
 # root until config is loaded and told otherwise, etc.
 entry_point_user = "root"
+device_users = []
 properties = {}
 machine_name = ''
 hook_dirs = []
@@ -145,6 +146,9 @@ class DevkitHandler(BaseHTTPRequestHandler):
 
 class DevkitService:
     def __init__(self):
+        global entry_point_user
+        global device_users
+
         self.port = SERVICE_PORT
 
         if 'Settings' in global_config:
@@ -156,6 +160,27 @@ class DevkitService:
             settings = user_config["Settings"]
             if 'Port' in settings:
                 self.port = int(settings["Port"])
+
+        # Parse users from configs
+        if os.geteuid() == 0:
+            # Running as root, maybe warn?
+            print("Running as root, Probably shouldn't be\n")
+            if 'Users' in global_config:
+                users = global_config["Users"]
+                if 'ShellUsers' in users:
+                    device_users = users["ShellUsers"]
+        else:
+            if 'Users' in user_config:
+                users = user_config["Users"]
+                if 'ShellUsers' in users:
+                    device_users = users["ShellUsers"]
+            else:
+                device_users = [os.getlogin()]
+
+        # If only one user, that's the entry point user
+        # Otherwise entry_point_user needs to be root to be able to switch between users
+        if len(device_users) == 1:
+            entry_point_user = device_users[0]
 
         self.httpd = socketserver.TCPServer(("", self.port), DevkitHandler, bind_and_activate=False)
         print("serving at port: {}".format(self.port))
