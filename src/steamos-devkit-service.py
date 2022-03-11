@@ -24,19 +24,50 @@
 #SOFTWARE.
 
 from http.server import BaseHTTPRequestHandler
+import json
 import socketserver
+import urllib.parse
 
 SERVICE_PORT = 32000
+# root until config is loaded and told otherwise, etc.
+entry_point_user = "root"
+properties = {"key": "value"}
 
 class DevkitHandler(BaseHTTPRequestHandler):
-    def _send_headers(self, code):
+    def _send_headers(self, code, type):
         self.send_response(code)
-        self.send_header("Content-type", "text/html")
+        self.send_header("Content-type", type)
         self.end_headers()
 
     def do_GET(self):
         print("GET request to path {} from {}".format(self.path, self.client_address[0]))
-        self._send_headers(200)
+
+        if (self.path == "/login-name"):
+            self._send_headers(200, "text/plain")
+            self.wfile.write(entry_point_user.encode())
+            return
+
+        elif (self.path == "/properties.json"):
+            self._send_headers(200, "application/json")
+            self.wfile.write(json.dumps(properties).encode())
+            return
+        
+        else:
+            query = urllib.parse.parse_qs(self.path[2:])
+            print("query is {}".format(query))
+
+            if (len(query) > 0 and query["command"]):
+                command = query["command"][0]
+    
+                if (command == "ping"):
+                    self._send_headers(200, "text/plain")
+                    self.wfile.write("pong\n".encode())
+                    return
+                else:
+                    self._send_headers(404, "")
+                    return
+
+        self._send_headers(200, "text/html")
         self.wfile.write("Get works\n".encode())
 
     def do_POST(self):
