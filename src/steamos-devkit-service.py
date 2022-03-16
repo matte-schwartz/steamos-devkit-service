@@ -24,7 +24,9 @@
 #SOFTWARE.
 
 from http.server import BaseHTTPRequestHandler
+import avahi
 import configparser
+import dbus
 import json
 import os
 import platform
@@ -150,6 +152,12 @@ class DevkitService:
         global device_users
 
         self.port = SERVICE_PORT
+        # TODO: Change to sanitize_machine_name if needed
+        self.name = machine_name
+        self.host = ""
+        self.domain = ""
+        self.stype = "_steamos-devkit._tcp"
+        self.text = ""
 
         if 'Settings' in global_config:
             settings = global_config["Settings"]
@@ -189,6 +197,30 @@ class DevkitService:
         self.httpd.server_bind()
         self.httpd.server_activate()
 
+    def publish(self):
+        bus = dbus.SystemBus()
+        server = dbus.Interface(
+            bus.get_object(
+                avahi.DBUS_NAME,
+                avahi.DBUS_PATH_SERVER),
+            avahi.DBUS_INTERFACE_SERVER)
+
+        g = dbus.Interface(
+            bus.get_object(avahi.DBUS_NAME,
+                server.EntryGroupNew()),
+            avahi.DBUS_INTERFACE_ENTRY_GROUP)
+        g.AddService(avahi.IF_UNSPEC, avahi.PROTO_UNSPEC, dbus.UInt32(0),
+                     self.name, self.stype, self.domain, self.host,
+                     dbus.UInt16(self.port), self.text)
+
+        g.Commit()
+        self.group = g
+        
+
+    def unpublish(self):
+        self.group.Reset()
+
+    def runServer(self):
         try:
             self.httpd.serve_forever()
         except KeyboardInterrupt:
@@ -199,4 +231,9 @@ class DevkitService:
 
 if __name__ == "__main__":
     service = DevkitService()
+
+    service.publish()
+    service.runServer()
+
+    service.unpublish()
 
