@@ -43,18 +43,27 @@ entry_point = "devkit-1"
 # root until config is loaded and told otherwise, etc.
 entry_point_user = "root"
 device_users = []
-properties = {}
+properties = {"txtvers": 1,
+              "login": entry_point_user,
+              "settings": "",
+              "devkit1": [
+                  entry_point
+              ]}
 machine_name = ''
 hook_dirs = []
 use_default_hooks = True
 
 global_config = configparser.ConfigParser()
+# Use str form to preserve case
+global_config.optionxform = str
 global_config.read(["/etc/steamos-devkit/steamos-devkit.conf", "/usr/share/steamos-devkit/steamos-devkit.conf"])
 
 user_config_path = os.path.join(os.path.expanduser('~'), '.config', PACKAGE, PACKAGE + '.conf')
 print("Trying to read user config from {}".format(user_config_path))
 
 user_config = configparser.ConfigParser()
+# Use str form to preserve case
+user_config.optionxform = str
 user_config.read(user_config_path)
 
 def find_hook(hook_dirs, use_default_hooks, name):
@@ -120,7 +129,7 @@ class DevkitHandler(BaseHTTPRequestHandler):
 
         elif (self.path == "/properties.json"):
             self._send_headers(200, "application/json")
-            self.wfile.write(json.dumps(properties).encode())
+            self.wfile.write(json.dumps(properties, indent=2).encode())
             return
         
         else:
@@ -152,6 +161,7 @@ class DevkitService:
     def __init__(self):
         global entry_point_user
         global device_users
+        global properties
 
         self.port = SERVICE_PORT
         # TODO: Change to sanitize_machine_name if needed
@@ -173,6 +183,8 @@ class DevkitService:
             if 'Port' in settings:
                 self.port = int(settings["Port"])
 
+        properties["settings"] = json.dumps(self.settings)
+
         # Parse users from configs
         if os.geteuid() == 0:
             # Running as root, maybe warn?
@@ -193,6 +205,7 @@ class DevkitService:
         # Otherwise entry_point_user needs to be root to be able to switch between users
         if len(device_users) == 1:
             entry_point_user = device_users[0]
+            properties["login"] = entry_point_user
 
         self.httpd = socketserver.TCPServer(("", self.port), DevkitHandler, bind_and_activate=False)
         print("serving at port: {}".format(self.port))
