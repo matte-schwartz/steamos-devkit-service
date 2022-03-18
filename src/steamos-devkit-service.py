@@ -37,7 +37,9 @@ import urllib.parse
 SERVICE_PORT = 32000
 PACKAGE = "steamos-devkit-service"
 DEVKIT_HOOKS_DIR = "/usr/share/steamos-devkit/hooks"
+CURRENT_TXTVERS = "txtvers=1"
 
+entry_point = "devkit-1"
 # root until config is loaded and told otherwise, etc.
 entry_point_user = "root"
 device_users = []
@@ -161,11 +163,13 @@ class DevkitService:
 
         if 'Settings' in global_config:
             settings = global_config["Settings"]
+            self.settings = dict(settings.items())
             if 'Port' in settings:
                 self.port = int(settings["Port"])
 
         if 'Settings' in user_config:
             settings = user_config["Settings"]
+            self.settings = dict(settings.items())
             if 'Port' in settings:
                 self.port = int(settings["Port"])
 
@@ -198,7 +202,15 @@ class DevkitService:
         self.httpd.server_activate()
 
     def publish(self):
+        global entry_point
+        global entry_point_user
+
         bus = dbus.SystemBus()
+        self.text = ["{}".format(CURRENT_TXTVERS).encode(),
+                     "settings={}".format(json.dumps(self.settings)).encode(),
+                     "login={}".format(entry_point_user).encode(),
+                     "devkit1={}".format(entry_point).encode()
+                    ]
         server = dbus.Interface(
             bus.get_object(
                 avahi.DBUS_NAME,
@@ -211,7 +223,7 @@ class DevkitService:
             avahi.DBUS_INTERFACE_ENTRY_GROUP)
         g.AddService(avahi.IF_UNSPEC, avahi.PROTO_UNSPEC, dbus.UInt32(0),
                      self.name, self.stype, self.domain, self.host,
-                     dbus.UInt16(self.port), self.text)
+                     dbus.UInt16(int(self.port)), self.text)
 
         g.Commit()
         self.group = g
