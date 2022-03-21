@@ -32,6 +32,7 @@ import os
 import platform
 import socketserver
 import subprocess
+import tempfile
 import urllib.parse
 
 SERVICE_PORT = 32000
@@ -151,11 +152,159 @@ class DevkitHandler(BaseHTTPRequestHandler):
         self.wfile.write("Get works\n".encode())
 
     def do_POST(self):
-        if (self.path == "/register"):
-            print("register request from {}".format(self.client_address[0]))
-            self._send_headers(200)
-            self.wfile.write("Registered\n".encode())
+        global hook_dirs
+        global use_default_hooks
+        global device_users
 
+        if (self.path == "/register"):
+            from_ip = self.client_address[0]
+            content_len = int(self.headers.get('Content-Length'))
+            post_body = self.rfile.read(content_len)
+            print("register request from {}".format(from_ip))
+            filename = self.write_key(post_body)
+
+            if not filename:
+                self._send_headers(403, "text/plain")
+                self.wfile.write("Failed to write ssh key")
+                return
+
+            # Run approve script
+            approve_hook = find_hook(hook_dirs, use_default_hooks, "approve-ssh-key")
+            if not approve_hook:
+                self._send_headers(403, "text/plain")
+                self.wfile.write("Failed to find approve hook");
+                os.unlink(filename)
+                return
+
+            # Run hook and parse output
+            p = subprocess.Popen([approve_hook, filename, from_ip], shell=False, stdout=subprocess.PIPE)
+            output = ''
+            for line in p.stdout:
+                textline = line.decode(encoding='utf-8', errors="ignore")
+                output += textline
+
+            p.wait()
+            output_object = json.loads(output)
+            if ("error" in output_object):
+                self._send_headers(403, "text/plain")
+                self.wfile.write("approve-ssh-key:\n".encode())
+                self.wfile.write(output_object["error"].encode())
+                os.unlink(filename)
+                return
+
+            # Otherwise assume it passed
+            install_hook = find_hook(hook_dirs, use_default_hooks, "install-ssh-key")
+            if not install_hook:
+                self._send_headers(403, "text-plain")
+                self.wfile.write("Failed to find install-ssh-key hook")
+                os.unlink(filename)
+                return
+            
+            command = [install_hook, filename]
+            # Append each user to command as separate arguments
+            for u in device_users:
+                command.append(u)
+
+            p = subprocess.Popen(command, shell=False, stdout=subprocess.PIPE)
+            output = ''
+            for line in p.stdout:
+                textline = line.decode(encoding='utf-8', errors="ignore")
+                output += textline
+            p.wait()
+
+            exit_code = p.returncode
+            if (exit_code != 0):
+                self._send_headers(500, "text/plain")
+                self.wfile.write("install-ssh-key:\n".encode())
+                self.wfile.write(output.encode())
+                os.unlink(filename)
+                return
+
+            self._send_headers(200, "text/plain")
+            self.wfile.write("Registered\n".encode())
+            os.unlink(filename)
+
+    def writefile(self, data):
+        # Get 1 from the resulting tuple, since that's the filename
+        filename = tempfile.mkstemp(prefix="devkit-", dir="/tmp/", text=True)[1]
+
+        # Then open ourselves
+        with open(filename, "w") as file:
+            file.write(data.decode())
+            file.close()
+
+        return filename
+
+    def write_key(self, post_body):
+        # Write key to temp file and return filename if valid, etc.
+        # Return None if invalid
+        length = len(post_body)
+        found_name = False
+        filename = None
+
+        if (length > 64 * 1024):
+            print("Key length too long")
+            return None
+        if not post_body.decode().startswith('ssh-rsa'):
+            print("Key doesn't start with ssh-rsa")
+            return None
+
+        # Get to the base64 bits
+        index = 8
+        while index < length and post_body[index] == ' ':
+            index = index + 1
+
+        # Make sure key is base64
+        body_decoded = post_body.decode()
+        while index < length:
+            if ((body_decoded[index] == '+') or (body_decoded[index] == '/') or
+               (body_decoded[index].isdigit()) or
+               (body_decoded[index].isalpha())):
+               index = index + 1
+               continue
+            elif (body_decoded[index] == '='):
+                index = index + 1
+                if ((index < length) and (body_decoded[index] == ' ')):
+                    break
+                elif ((index < length) and (body_decoded[index] == '=')):
+                    index = index + 1
+                    if ((index < length) and (body_decoded[index] == ' ')):
+                        break
+                print("Found = but no space or = next, invalid key")
+                return None
+            elif (body_decoded[index] == ' '):
+                break
+            else:
+                print("Found invalid data, invalid key at index: {} data: {}".format(index, body_decoded[index]))
+                return None
+
+            index = index + 1
+
+        print("Key is valid base64, writing to temp file index: {}".format(index))
+        while (index < length):
+            if (body_decoded[index] == ' '):
+                # it's a space, the rest is name or magic phrase, don't write to disk
+                if (found_name):
+                    print("Found name ending at index {}".format(index))
+                    length = index
+                else:
+                    print("Found name ending index {}".format(index))
+                    found_name = True
+            if (body_decoded[index] == '\0'):
+                print("Found null terminator before expected")
+                return None
+            if (body_decoded[index] == '\n' and idx != length - 1):
+                print("Found newline before expected")
+                return None
+            index = index + 1
+
+        # write data to the file
+        data = body_decoded[:length]
+        filename = self.writefile(data.encode())
+
+        print("Filename key written to: {}".format(filename))
+
+        return filename
 
 class DevkitService:
     def __init__(self):
