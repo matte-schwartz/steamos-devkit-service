@@ -245,7 +245,7 @@ class DevkitHandler(BaseHTTPRequestHandler):
         length = len(post_body)
         found_name = False
 
-        if length > 64 * 1024:
+        if length >= 64 * 1024:
             print("Key length too long")
             return None
         if not post_body.decode().startswith('ssh-rsa'):
