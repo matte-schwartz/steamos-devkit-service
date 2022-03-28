@@ -57,7 +57,7 @@ HOOK_DIRS = []
 USE_DEFAULT_HOOKS = True
 
 
-def writefile(data):
+def writefile(data: bytes) -> str:
     # Get 1 from the resulting tuple, since that's the filename
     filename = tempfile.mkstemp(prefix="devkit-", dir="/tmp/", text=True)[1]
 
@@ -69,7 +69,7 @@ def writefile(data):
     return filename
 
 
-def write_key(post_body):
+def write_key(post_body: bytes) -> str:
     # Write key to temp file and return filename if valid, etc.
     # Return None if invalid
     length = len(post_body)
@@ -77,10 +77,10 @@ def write_key(post_body):
 
     if length >= 64 * 1024:
         print("Key length too long")
-        return None
+        return ''
     if not post_body.decode().startswith('ssh-rsa '):
         print("Key doesn't start with ssh-rsa ")
-        return None
+        return ''
 
     # Get to the base64 bits
     index = 8
@@ -104,13 +104,13 @@ def write_key(post_body):
                 if (index < length) and (body_decoded[index] == ' '):
                     break
             print("Found = but no space or = next, invalid key")
-            return None
+            return ''
         if body_decoded[index] == ' ':
             break
 
         print("Found invalid data, invalid key at "
               f"index: {index} data: {body_decoded[index]}")
-        return None
+        return ''
 
     print(f"Key is valid base64, writing to temp file index: {index}")
     while index < length:
@@ -124,10 +124,10 @@ def write_key(post_body):
                 found_name = True
         if body_decoded[index] == '\0':
             print("Found null terminator before expected")
-            return None
+            return ''
         if body_decoded[index] == '\n' and index != length - 1:
             print("Found newline before expected")
-            return None
+            return ''
         index = index + 1
 
     # write data to the file
@@ -139,7 +139,7 @@ def write_key(post_body):
     return filename
 
 
-def find_hook(name: str) -> str or None:
+def find_hook(name: str) -> str:
     # First see if it exists in the given paths.
     for path in HOOK_DIRS:
         test_path = os.path.join(path, name)
@@ -148,7 +148,7 @@ def find_hook(name: str) -> str or None:
 
     if not USE_DEFAULT_HOOKS:
         print(f"Error: Unable to find hook for {name} in hook directories\n")
-        return None
+        return ''
 
     test_path = f"/etc/{PACKAGE}/hooks/{name}"
     if os.path.exists(test_path) and os.access(test_path, os.X_OK):
@@ -167,7 +167,7 @@ def find_hook(name: str) -> str or None:
         return test_path
 
     print(f"Error:: Unable to find hook for {name} in /etc/{PACKAGE}/hooks or {DEVKIT_HOOKS_DIR}")
-    return None
+    return ''
 
 
 # Run devkit-1-identify hook to get hostname, otherwise use default platform.node()
