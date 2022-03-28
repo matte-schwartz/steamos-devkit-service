@@ -78,8 +78,8 @@ def write_key(post_body):
     if length >= 64 * 1024:
         print("Key length too long")
         return None
-    if not post_body.decode().startswith('ssh-rsa'):
-        print("Key doesn't start with ssh-rsa")
+    if not post_body.decode().startswith('ssh-rsa '):
+        print("Key doesn't start with ssh-rsa ")
         return None
 
     # Get to the base64 bits
