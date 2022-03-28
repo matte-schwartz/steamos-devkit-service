@@ -1,32 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-#MIT License
+# MIT License
 #
-#Copyright (c) 2022 Valve Software inc., Collabora Ltd
+# Copyright (c) 2022 Valve Software inc., Collabora Ltd
 #
-#Permission is hereby granted, free of charge, to any person obtaining a copy
-#of this software and associated documentation files (the "Software"), to deal
-#in the Software without restriction, including without limitation the rights
-#to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-#copies of the Software, and to permit persons to whom the Software is
-#furnished to do so, subject to the following conditions:
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 #
-#The above copyright notice and this permission notice shall be included in all
-#copies or substantial portions of the Software.
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
 #
-#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-#IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-#AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-#OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-#SOFTWARE.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 from http.server import BaseHTTPRequestHandler
-import avahi
 import configparser
-import dbus
 import json
 import os
 import platform
@@ -35,112 +33,120 @@ import subprocess
 import tempfile
 import urllib.parse
 
+import dbus
+
+import avahi
+
 SERVICE_PORT = 32000
 PACKAGE = "steamos-devkit-service"
 DEVKIT_HOOKS_DIR = "/usr/share/steamos-devkit/hooks"
 CURRENT_TXTVERS = "txtvers=1"
 
-entry_point = "devkit-1"
+ENTRY_POINT = "devkit-1"
 # root until config is loaded and told otherwise, etc.
-entry_point_user = "root"
-device_users = []
-properties = {"txtvers": 1,
-              "login": entry_point_user,
+ENTRY_POINT_USER = "root"
+DEVICE_USERS = []
+PROPERTIES = {"txtvers": 1,
+              "login": ENTRY_POINT_USER,
               "settings": "",
               "devkit1": [
-                  entry_point
+                  ENTRY_POINT
               ]}
-machine_name = ''
-hook_dirs = []
-use_default_hooks = True
+MACHINE_NAME = ''
+HOOK_DIRS = []
+USE_DEFAULT_HOOKS = True
 
 global_config = configparser.ConfigParser()
 # Use str form to preserve case
 global_config.optionxform = str
-global_config.read(["/etc/steamos-devkit/steamos-devkit.conf", "/usr/share/steamos-devkit/steamos-devkit.conf"])
+global_config.read(["/etc/steamos-devkit/steamos-devkit.conf",
+                    "/usr/share/steamos-devkit/steamos-devkit.conf"])
 
 user_config_path = os.path.join(os.path.expanduser('~'), '.config', PACKAGE, PACKAGE + '.conf')
-print("Trying to read user config from {}".format(user_config_path))
+print(f"Trying to read user config from {user_config_path}")
 
 user_config = configparser.ConfigParser()
 # Use str form to preserve case
 user_config.optionxform = str
 user_config.read(user_config_path)
 
-def find_hook(hook_dirs, use_default_hooks, name):
+
+def find_hook(name: str) -> str or None:
     # First see if it exists in the given paths.
-    for path in hook_dirs:
+    for path in HOOK_DIRS:
         test_path = os.path.join(path, name)
-        if (os.path.exists(test_path) and os.access(test_path, os.X_OK)):
+        if os.path.exists(test_path) and os.access(test_path, os.X_OK):
             return test_path
-    
-    if (not use_default_hooks):
-        print("Error: Unable to find hook for {} in hook directories\n".format(name))
+
+    if not USE_DEFAULT_HOOKS:
+        print(f"Error: Unable to find hook for {name} in hook directories\n")
         return None
 
-    test_path = "/etc/{}/hooks/{}".format(PACKAGE, name)
-    if (os.path.exists(test_path) and os.access(test_path, os.X_OK)):
+    test_path = f"/etc/{PACKAGE}/hooks/{name}"
+    if os.path.exists(test_path) and os.access(test_path, os.X_OK):
         return test_path
 
-    test_path = "{}/{}".format(DEVKIT_HOOKS_DIR, name)
-    if (os.path.exists(test_path) and os.access(test_path, os.X_OK)):
+    test_path = f"{DEVKIT_HOOKS_DIR}/{name}"
+    if os.path.exists(test_path) and os.access(test_path, os.X_OK):
         return test_path
 
-    test_path = "{}/{}.sample".format(DEVKIT_HOOKS_DIR, name)
-    if (os.path.exists(test_path) and os.access(test_path, os.X_OK)):
+    test_path = f"{DEVKIT_HOOKS_DIR}/{name}.sample"
+    if os.path.exists(test_path) and os.access(test_path, os.X_OK):
         return test_path
 
-    test_path = "{}/../hooks/{}".format(os.path.dirname(os.path.realpath(__file__)), name)
-    if (os.path.exists(test_path) and os.access(test_path, os.X_OK)):
+    test_path = f"{os.path.dirname(os.path.realpath(__file__))}/../hooks/{name}"
+    if os.path.exists(test_path) and os.access(test_path, os.X_OK):
         return test_path
 
-    print("Error:: Unable to find hook for {} in /etc/{}/hooks or {}".format(name, PACKAGE, DEVKIT_HOOKS_DIR))
+    print(f"Error:: Unable to find hook for {name} in /etc/{PACKAGE}/hooks or {DEVKIT_HOOKS_DIR}")
     return None
 
+
 # Run devkit-1-identify hook to get hostname, otherwise use default platform.node()
-identify_hook = find_hook(hook_dirs, use_default_hooks, "devkit-1-identify")
-if (identify_hook):
+identify_hook = find_hook("devkit-1-identify")
+if identify_hook:
     # Run hook and parse machine_name out
-    p = subprocess.Popen(identify_hook, shell=False, stdout=subprocess.PIPE)
+    process = subprocess.Popen(identify_hook, shell=False, stdout=subprocess.PIPE)
     output = ''
-    for line in p.stdout:
+    for line in process.stdout:
         textline = line.decode(encoding='utf-8', errors="ignore")
         output += textline
-    p.wait()
+    process.wait()
     output_object = json.loads(output)
-    if ('machine_name' in output_object):
-        machine_name = output_object["machine_name"]
+    if 'machine_name' in output_object:
+        MACHINE_NAME = output_object["machine_name"]
 
-if not machine_name:
-    machine_name = platform.node()
+if not MACHINE_NAME:
+    MACHINE_NAME = platform.node()
+
 
 class DevkitHandler(BaseHTTPRequestHandler):
-    def _send_headers(self, code, type):
+    def _send_headers(self, code, content_type):
         self.send_response(code)
-        self.send_header("Content-type", type)
+        self.send_header("Content-type", content_type)
         self.end_headers()
 
     def do_GET(self):
-        print("GET request to path {} from {}".format(self.path, self.client_address[0]))
+        print(f"GET request to path {self.path} from {self.client_address[0]}")
 
-        if (self.path == "/login-name"):
+        if self.path == "/login-name":
             self._send_headers(200, "text/plain")
-            self.wfile.write(entry_point_user.encode())
+            self.wfile.write(ENTRY_POINT_USER.encode())
             return
 
-        elif (self.path == "/properties.json"):
+        elif self.path == "/properties.json":
             self._send_headers(200, "application/json")
-            self.wfile.write(json.dumps(properties, indent=2).encode())
+            self.wfile.write(json.dumps(PROPERTIES, indent=2).encode())
             return
-        
+
         else:
             query = urllib.parse.parse_qs(self.path[2:])
-            print("query is {}".format(query))
+            print(f"query is {query}")
 
-            if (len(query) > 0 and query["command"]):
+            if len(query) > 0 and query["command"]:
                 command = query["command"][0]
-    
-                if (command == "ping"):
+
+                if command == "ping":
                     self._send_headers(200, "text/plain")
                     self.wfile.write("pong\n".encode())
                     return
@@ -152,71 +158,69 @@ class DevkitHandler(BaseHTTPRequestHandler):
         self.wfile.write("Get works\n".encode())
 
     def do_POST(self):
-        global hook_dirs
-        global use_default_hooks
-        global device_users
-
-        if (self.path == "/register"):
+        if self.path == "/register":
             from_ip = self.client_address[0]
             content_len = int(self.headers.get('Content-Length'))
             post_body = self.rfile.read(content_len)
-            print("register request from {}".format(from_ip))
+            print(f"register request from {from_ip}")
             filename = self.write_key(post_body)
 
             if not filename:
                 self._send_headers(403, "text/plain")
-                self.wfile.write("Failed to write ssh key")
+                self.wfile.write(b"Failed to write ssh key\n")
                 return
 
             # Run approve script
-            approve_hook = find_hook(hook_dirs, use_default_hooks, "approve-ssh-key")
+            approve_hook = find_hook("approve-ssh-key")
             if not approve_hook:
                 self._send_headers(403, "text/plain")
-                self.wfile.write("Failed to find approve hook");
+                self.wfile.write(b"Failed to find approve hook\n")
                 os.unlink(filename)
                 return
 
             # Run hook and parse output
-            p = subprocess.Popen([approve_hook, filename, from_ip], shell=False, stdout=subprocess.PIPE)
-            output = ''
-            for line in p.stdout:
-                textline = line.decode(encoding='utf-8', errors="ignore")
-                output += textline
+            approve_process = subprocess.Popen([approve_hook, filename, from_ip],
+                                               shell=False,
+                                               stdout=subprocess.PIPE)
+            approve_output = ''
+            for approve_line in approve_process.stdout:
+                approve_textline = approve_line.decode(encoding='utf-8', errors="ignore")
+                approve_output += approve_textline
 
-            p.wait()
-            output_object = json.loads(output)
-            if ("error" in output_object):
+            approve_process.wait()
+            approve_object = json.loads(approve_output)
+            if "error" in output_object:
                 self._send_headers(403, "text/plain")
                 self.wfile.write("approve-ssh-key:\n".encode())
-                self.wfile.write(output_object["error"].encode())
+                self.wfile.write(approve_object["error"].encode())
                 os.unlink(filename)
                 return
 
-            # Otherwise assume it passed
-            install_hook = find_hook(hook_dirs, use_default_hooks, "install-ssh-key")
+            # Otherwise, assume it passed
+            install_hook = find_hook("install-ssh-key")
             if not install_hook:
                 self._send_headers(403, "text-plain")
-                self.wfile.write("Failed to find install-ssh-key hook")
+                self.wfile.write(b"Failed to find install-ssh-key hook\n")
                 os.unlink(filename)
                 return
-            
+
             command = [install_hook, filename]
             # Append each user to command as separate arguments
-            for u in device_users:
-                command.append(u)
+            for user in DEVICE_USERS:
+                command.append(user)
 
-            p = subprocess.Popen(command, shell=False, stdout=subprocess.PIPE)
-            output = ''
-            for line in p.stdout:
-                textline = line.decode(encoding='utf-8', errors="ignore")
-                output += textline
-            p.wait()
+            install_process = subprocess.Popen(command, shell=False, stdout=subprocess.PIPE)
+            install_output = ''
+            for install_line in install_process.stdout:
+                install_textline = install_line.decode(encoding='utf-8', errors="ignore")
+                install_output += install_textline
+            install_process.wait()
 
-            exit_code = p.returncode
-            if (exit_code != 0):
+            exit_code = install_process.returncode
+            if exit_code != 0:
                 self._send_headers(500, "text/plain")
                 self.wfile.write("install-ssh-key:\n".encode())
-                self.wfile.write(output.encode())
+                self.wfile.write(install_output.encode())
                 os.unlink(filename)
                 return
 
@@ -229,7 +233,7 @@ class DevkitHandler(BaseHTTPRequestHandler):
         filename = tempfile.mkstemp(prefix="devkit-", dir="/tmp/", text=True)[1]
 
         # Then open ourselves
-        with open(filename, "w") as file:
+        with open(filename, "w", encoding='utf-8') as file:
             file.write(data.decode())
             file.close()
 
@@ -240,9 +244,8 @@ class DevkitHandler(BaseHTTPRequestHandler):
         # Return None if invalid
         length = len(post_body)
         found_name = False
-        filename = None
 
-        if (length > 64 * 1024):
+        if length > 64 * 1024:
             print("Key length too long")
             return None
         if not post_body.decode().startswith('ssh-rsa'):
@@ -258,42 +261,41 @@ class DevkitHandler(BaseHTTPRequestHandler):
         body_decoded = post_body.decode()
         while index < length:
             if ((body_decoded[index] == '+') or (body_decoded[index] == '/') or
-               (body_decoded[index].isdigit()) or
-               (body_decoded[index].isalpha())):
-               index = index + 1
-               continue
-            elif (body_decoded[index] == '='):
+                    (body_decoded[index].isdigit()) or
+                    (body_decoded[index].isalpha())):
                 index = index + 1
-                if ((index < length) and (body_decoded[index] == ' ')):
+                continue
+            elif body_decoded[index] == '=':
+                index = index + 1
+                if (index < length) and (body_decoded[index] == ' '):
                     break
-                elif ((index < length) and (body_decoded[index] == '=')):
+                elif (index < length) and (body_decoded[index] == '='):
                     index = index + 1
-                    if ((index < length) and (body_decoded[index] == ' ')):
+                    if (index < length) and (body_decoded[index] == ' '):
                         break
                 print("Found = but no space or = next, invalid key")
                 return None
-            elif (body_decoded[index] == ' '):
+            elif body_decoded[index] == ' ':
                 break
             else:
-                print("Found invalid data, invalid key at index: {} data: {}".format(index, body_decoded[index]))
+                print(f'Found invalid data, invalid key at '
+                      'index: {index} data: {body_decoded[index]}')
                 return None
 
-            index = index + 1
-
-        print("Key is valid base64, writing to temp file index: {}".format(index))
-        while (index < length):
-            if (body_decoded[index] == ' '):
+        print(f"Key is valid base64, writing to temp file index: {index}")
+        while index < length:
+            if body_decoded[index] == ' ':
                 # it's a space, the rest is name or magic phrase, don't write to disk
-                if (found_name):
-                    print("Found name ending at index {}".format(index))
+                if found_name:
+                    print(f"Found name ending at index {index}")
                     length = index
                 else:
-                    print("Found name ending index {}".format(index))
+                    print(f"Found name ending index {index}")
                     found_name = True
-            if (body_decoded[index] == '\0'):
+            if body_decoded[index] == '\0':
                 print("Found null terminator before expected")
                 return None
-            if (body_decoded[index] == '\n' and idx != length - 1):
+            if body_decoded[index] == '\n' and index != length - 1:
                 print("Found newline before expected")
                 return None
             index = index + 1
@@ -302,37 +304,37 @@ class DevkitHandler(BaseHTTPRequestHandler):
         data = body_decoded[:length]
         filename = self.writefile(data.encode())
 
-        print("Filename key written to: {}".format(filename))
+        print(f"Filename key written to: {filename}")
 
         return filename
 
+
 class DevkitService:
     def __init__(self):
-        global entry_point_user
-        global device_users
-        global properties
+        global ENTRY_POINT_USER
+        global DEVICE_USERS
 
         self.port = SERVICE_PORT
-        # TODO: Change to sanitize_machine_name if needed
-        self.name = machine_name
+        self.name = MACHINE_NAME
         self.host = ""
         self.domain = ""
         self.stype = "_steamos-devkit._tcp"
         self.text = ""
+        self.group = None
 
         if 'Settings' in global_config:
             settings = global_config["Settings"]
-            self.settings = dict(settings.items())
+            self.settings = dict(settings)
             if 'Port' in settings:
                 self.port = int(settings["Port"])
 
         if 'Settings' in user_config:
             settings = user_config["Settings"]
-            self.settings = dict(settings.items())
+            self.settings = dict(settings)
             if 'Port' in settings:
                 self.port = int(settings["Port"])
 
-        properties["settings"] = json.dumps(self.settings)
+        PROPERTIES["settings"] = json.dumps(self.settings)
 
         # Parse users from configs
         if os.geteuid() == 0:
@@ -341,73 +343,69 @@ class DevkitService:
             if 'Users' in global_config:
                 users = global_config["Users"]
                 if 'ShellUsers' in users:
-                    device_users = users["ShellUsers"]
+                    DEVICE_USERS = users["ShellUsers"]
         else:
             if 'Users' in user_config:
                 users = user_config["Users"]
                 if 'ShellUsers' in users:
-                    device_users = users["ShellUsers"]
+                    DEVICE_USERS = users["ShellUsers"]
             else:
-                device_users = [os.getlogin()]
+                DEVICE_USERS = [os.getlogin()]
 
         # If only one user, that's the entry point user
         # Otherwise entry_point_user needs to be root to be able to switch between users
-        if len(device_users) == 1:
-            entry_point_user = device_users[0]
-            properties["login"] = entry_point_user
+        if len(DEVICE_USERS) == 1:
+            ENTRY_POINT_USER = DEVICE_USERS[0]
+            PROPERTIES["login"] = ENTRY_POINT_USER
 
         self.httpd = socketserver.TCPServer(("", self.port), DevkitHandler, bind_and_activate=False)
-        print("serving at port: {}".format(self.port))
-        print("machine name: {}".format(machine_name))
+        print(f"serving at port: {self.port}")
+        print(f"machine name: {MACHINE_NAME}")
         self.httpd.allow_reuse_address = True
         self.httpd.server_bind()
         self.httpd.server_activate()
 
     def publish(self):
-        global entry_point
-        global entry_point_user
-
         bus = dbus.SystemBus()
-        self.text = ["{}".format(CURRENT_TXTVERS).encode(),
-                     "settings={}".format(json.dumps(self.settings)).encode(),
-                     "login={}".format(entry_point_user).encode(),
-                     "devkit1={}".format(entry_point).encode()
-                    ]
+        self.text = [f"{CURRENT_TXTVERS}".encode(),
+                     f"settings={json.dumps(self.settings)}".encode(),
+                     f"login={ENTRY_POINT_USER}".encode(),
+                     f"devkit1={ENTRY_POINT}".encode()
+                     ]
         server = dbus.Interface(
             bus.get_object(
                 avahi.DBUS_NAME,
                 avahi.DBUS_PATH_SERVER),
             avahi.DBUS_INTERFACE_SERVER)
 
-        g = dbus.Interface(
+        avahi_object = dbus.Interface(
             bus.get_object(avahi.DBUS_NAME,
-                server.EntryGroupNew()),
+                           server.EntryGroupNew()),
             avahi.DBUS_INTERFACE_ENTRY_GROUP)
-        g.AddService(avahi.IF_UNSPEC, avahi.PROTO_UNSPEC, dbus.UInt32(0),
-                     self.name, self.stype, self.domain, self.host,
-                     dbus.UInt16(int(self.port)), self.text)
+        avahi_object.AddService(avahi.IF_UNSPEC, avahi.PROTO_UNSPEC, dbus.UInt32(0),
+                                self.name, self.stype, self.domain, self.host,
+                                dbus.UInt16(int(self.port)), self.text)
 
-        g.Commit()
-        self.group = g
-        
+        avahi_object.Commit()
+        self.group = avahi_object
 
     def unpublish(self):
         self.group.Reset()
 
-    def runServer(self):
+    def run_server(self):
         try:
             self.httpd.serve_forever()
         except KeyboardInterrupt:
             pass
 
         self.httpd.server_close()
-        print("done serving at port: {}".format(self.port))
+        print(f"done serving at port: {self.port}")
+
 
 if __name__ == "__main__":
     service = DevkitService()
 
     service.publish()
-    service.runServer()
+    service.run_server()
 
     service.unpublish()
-
