@@ -56,19 +56,87 @@ MACHINE_NAME = ''
 HOOK_DIRS = []
 USE_DEFAULT_HOOKS = True
 
-global_config = configparser.ConfigParser()
-# Use str form to preserve case
-global_config.optionxform = str
-global_config.read(["/etc/steamos-devkit/steamos-devkit.conf",
-                    "/usr/share/steamos-devkit/steamos-devkit.conf"])
 
-user_config_path = os.path.join(os.path.expanduser('~'), '.config', PACKAGE, PACKAGE + '.conf')
-print(f"Trying to read user config from {user_config_path}")
+def writefile(data):
+    # Get 1 from the resulting tuple, since that's the filename
+    filename = tempfile.mkstemp(prefix="devkit-", dir="/tmp/", text=True)[1]
 
-user_config = configparser.ConfigParser()
-# Use str form to preserve case
-user_config.optionxform = str
-user_config.read(user_config_path)
+    # Then open ourselves
+    with open(filename, "w", encoding='utf-8') as file:
+        file.write(data.decode())
+        file.close()
+
+    return filename
+
+
+def write_key(post_body):
+    # Write key to temp file and return filename if valid, etc.
+    # Return None if invalid
+    length = len(post_body)
+    found_name = False
+
+    if length >= 64 * 1024:
+        print("Key length too long")
+        return None
+    if not post_body.decode().startswith('ssh-rsa'):
+        print("Key doesn't start with ssh-rsa")
+        return None
+
+    # Get to the base64 bits
+    index = 8
+    while index < length and post_body[index] == ' ':
+        index = index + 1
+
+    # Make sure key is base64
+    body_decoded = post_body.decode()
+    while index < length:
+        if ((body_decoded[index] == '+') or (body_decoded[index] == '/') or
+                (body_decoded[index].isdigit()) or
+                (body_decoded[index].isalpha())):
+            index = index + 1
+            continue
+        if body_decoded[index] == '=':
+            index = index + 1
+            if (index < length) and (body_decoded[index] == ' '):
+                break
+            if (index < length) and (body_decoded[index] == '='):
+                index = index + 1
+                if (index < length) and (body_decoded[index] == ' '):
+                    break
+            print("Found = but no space or = next, invalid key")
+            return None
+        if body_decoded[index] == ' ':
+            break
+
+        print("Found invalid data, invalid key at "
+              f"index: {index} data: {body_decoded[index]}")
+        return None
+
+    print(f"Key is valid base64, writing to temp file index: {index}")
+    while index < length:
+        if body_decoded[index] == ' ':
+            # it's a space, the rest is name or magic phrase, don't write to disk
+            if found_name:
+                print(f"Found name ending at index {index}")
+                length = index
+            else:
+                print(f"Found name ending index {index}")
+                found_name = True
+        if body_decoded[index] == '\0':
+            print("Found null terminator before expected")
+            return None
+        if body_decoded[index] == '\n' and index != length - 1:
+            print("Found newline before expected")
+            return None
+        index = index + 1
+
+    # write data to the file
+    data = body_decoded[:length]
+    filename = writefile(data.encode())
+
+    print(f"Filename key written to: {filename}")
+
+    return filename
 
 
 def find_hook(name: str) -> str or None:
@@ -134,25 +202,24 @@ class DevkitHandler(BaseHTTPRequestHandler):
             self.wfile.write(ENTRY_POINT_USER.encode())
             return
 
-        elif self.path == "/properties.json":
+        if self.path == "/properties.json":
             self._send_headers(200, "application/json")
             self.wfile.write(json.dumps(PROPERTIES, indent=2).encode())
             return
 
-        else:
-            query = urllib.parse.parse_qs(self.path[2:])
-            print(f"query is {query}")
+        query = urllib.parse.parse_qs(self.path[2:])
+        print(f"query is {query}")
 
-            if len(query) > 0 and query["command"]:
-                command = query["command"][0]
+        if len(query) > 0 and query["command"]:
+            command = query["command"][0]
 
-                if command == "ping":
-                    self._send_headers(200, "text/plain")
-                    self.wfile.write("pong\n".encode())
-                    return
-                else:
-                    self._send_headers(404, "")
-                    return
+            if command == "ping":
+                self._send_headers(200, "text/plain")
+                self.wfile.write("pong\n".encode())
+                return
+
+            self._send_headers(404, "")
+            return
 
         self._send_headers(200, "text/html")
         self.wfile.write("Get works\n".encode())
@@ -163,7 +230,7 @@ class DevkitHandler(BaseHTTPRequestHandler):
             content_len = int(self.headers.get('Content-Length'))
             post_body = self.rfile.read(content_len)
             print(f"register request from {from_ip}")
-            filename = self.write_key(post_body)
+            filename = write_key(post_body)
 
             if not filename:
                 self._send_headers(403, "text/plain")
@@ -228,86 +295,6 @@ class DevkitHandler(BaseHTTPRequestHandler):
             self.wfile.write("Registered\n".encode())
             os.unlink(filename)
 
-    def writefile(self, data):
-        # Get 1 from the resulting tuple, since that's the filename
-        filename = tempfile.mkstemp(prefix="devkit-", dir="/tmp/", text=True)[1]
-
-        # Then open ourselves
-        with open(filename, "w", encoding='utf-8') as file:
-            file.write(data.decode())
-            file.close()
-
-        return filename
-
-    def write_key(self, post_body):
-        # Write key to temp file and return filename if valid, etc.
-        # Return None if invalid
-        length = len(post_body)
-        found_name = False
-
-        if length >= 64 * 1024:
-            print("Key length too long")
-            return None
-        if not post_body.decode().startswith('ssh-rsa'):
-            print("Key doesn't start with ssh-rsa")
-            return None
-
-        # Get to the base64 bits
-        index = 8
-        while index < length and post_body[index] == ' ':
-            index = index + 1
-
-        # Make sure key is base64
-        body_decoded = post_body.decode()
-        while index < length:
-            if ((body_decoded[index] == '+') or (body_decoded[index] == '/') or
-                    (body_decoded[index].isdigit()) or
-                    (body_decoded[index].isalpha())):
-                index = index + 1
-                continue
-            elif body_decoded[index] == '=':
-                index = index + 1
-                if (index < length) and (body_decoded[index] == ' '):
-                    break
-                elif (index < length) and (body_decoded[index] == '='):
-                    index = index + 1
-                    if (index < length) and (body_decoded[index] == ' '):
-                        break
-                print("Found = but no space or = next, invalid key")
-                return None
-            elif body_decoded[index] == ' ':
-                break
-            else:
-                print(f'Found invalid data, invalid key at '
-                      'index: {index} data: {body_decoded[index]}')
-                return None
-
-        print(f"Key is valid base64, writing to temp file index: {index}")
-        while index < length:
-            if body_decoded[index] == ' ':
-                # it's a space, the rest is name or magic phrase, don't write to disk
-                if found_name:
-                    print(f"Found name ending at index {index}")
-                    length = index
-                else:
-                    print(f"Found name ending index {index}")
-                    found_name = True
-            if body_decoded[index] == '\0':
-                print("Found null terminator before expected")
-                return None
-            if body_decoded[index] == '\n' and index != length - 1:
-                print("Found newline before expected")
-                return None
-            index = index + 1
-
-        # write data to the file
-        data = body_decoded[:length]
-        filename = self.writefile(data.encode())
-
-        print(f"Filename key written to: {filename}")
-
-        return filename
-
 
 class DevkitService:
     def __init__(self):
@@ -322,14 +309,16 @@ class DevkitService:
         self.text = ""
         self.group = None
 
-        if 'Settings' in global_config:
-            settings = global_config["Settings"]
-            self.settings = dict(settings)
-            if 'Port' in settings:
-                self.port = int(settings["Port"])
+        config = configparser.ConfigParser()
+        # Use str form to preserve case
+        config.optionxform = str
+        user_config_path = os.path.join(os.path.expanduser('~'), '.config', PACKAGE, PACKAGE + '.conf')
+        config.read(["/etc/steamos-devkit/steamos-devkit.conf",
+                     "/usr/share/steamos-devkit/steamos-devkit.conf",
+                     user_config_path])
 
-        if 'Settings' in user_config:
-            settings = user_config["Settings"]
+        if 'Settings' in config:
+            settings = config["Settings"]
             self.settings = dict(settings)
             if 'Port' in settings:
                 self.port = int(settings["Port"])
@@ -340,13 +329,13 @@ class DevkitService:
         if os.geteuid() == 0:
             # Running as root, maybe warn?
             print("Running as root, Probably shouldn't be\n")
-            if 'Users' in global_config:
-                users = global_config["Users"]
+            if 'Users' in config:
+                users = config["Users"]
                 if 'ShellUsers' in users:
                     DEVICE_USERS = users["ShellUsers"]
         else:
-            if 'Users' in user_config:
-                users = user_config["Users"]
+            if 'Users' in config:
+                users = config["Users"]
                 if 'ShellUsers' in users:
                     DEVICE_USERS = users["ShellUsers"]
             else:
