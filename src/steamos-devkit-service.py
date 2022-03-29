@@ -58,6 +58,8 @@ USE_DEFAULT_HOOKS = True
 
 
 def writefile(data: bytes) -> str:
+    """ Write given bytes to a temporary file and return the filename """
+
     # Get 1 from the resulting tuple, since that's the filename
     filename = tempfile.mkstemp(prefix="devkit-", dir="/tmp/", text=True)[1]
 
@@ -70,8 +72,10 @@ def writefile(data: bytes) -> str:
 
 
 def write_key(post_body: bytes) -> str:
-    # Write key to temp file and return filename if valid, etc.
-    # Return None if invalid
+    """ Write key to temp file and return filename if valid
+
+    Return None if invalid
+    """
     length = len(post_body)
     found_name = False
 
@@ -140,6 +144,10 @@ def write_key(post_body: bytes) -> str:
 
 
 def find_hook(name: str) -> str:
+    """ Find a hook with the given name
+
+    Return the path to the hook if found. '' if not found
+    """
     # First see if it exists in the given paths.
     for path in HOOK_DIRS:
         test_path = os.path.join(path, name)
@@ -175,12 +183,12 @@ identify_hook = find_hook("devkit-1-identify")
 if identify_hook:
     # Run hook and parse machine_name out
     process = subprocess.Popen(identify_hook, shell=False, stdout=subprocess.PIPE)
-    output = ''
+    OUTPUT = ''
     for line in process.stdout:
         textline = line.decode(encoding='utf-8', errors="ignore")
-        output += textline
+        OUTPUT += textline
     process.wait()
-    output_object = json.loads(output)
+    output_object = json.loads(OUTPUT)
     if 'machine_name' in output_object:
         MACHINE_NAME = output_object["machine_name"]
 
@@ -189,12 +197,16 @@ if not MACHINE_NAME:
 
 
 class DevkitHandler(BaseHTTPRequestHandler):
+    """ Class to handle http requests on selected port for registration, getting properties.
+    """
     def _send_headers(self, code, content_type):
         self.send_response(code)
         self.send_header("Content-type", content_type)
         self.end_headers()
 
     def do_GET(self):
+        """ Handle GET requests
+        """
         print(f"GET request to path {self.path} from {self.client_address[0]}")
 
         if self.path == "/login-name":
@@ -225,6 +237,8 @@ class DevkitHandler(BaseHTTPRequestHandler):
         self.wfile.write("Get works\n".encode())
 
     def do_POST(self):
+        """ Handle POST requests
+        """
         if self.path == "/register":
             from_ip = self.client_address[0]
             content_len = int(self.headers.get('Content-Length'))
@@ -297,6 +311,10 @@ class DevkitHandler(BaseHTTPRequestHandler):
 
 
 class DevkitService:
+    """ Class to run as service.
+
+    Parses configuration, creates handler, registers with avahi, etc.
+    """
     def __init__(self):
         global ENTRY_POINT_USER
         global DEVICE_USERS
@@ -312,10 +330,9 @@ class DevkitService:
         config = configparser.ConfigParser()
         # Use str form to preserve case
         config.optionxform = str
-        user_config_path = os.path.join(os.path.expanduser('~'), '.config', PACKAGE, PACKAGE + '.conf')
         config.read(["/etc/steamos-devkit/steamos-devkit.conf",
                      "/usr/share/steamos-devkit/steamos-devkit.conf",
-                     user_config_path])
+                     os.path.join(os.path.expanduser('~'), '.config', PACKAGE, PACKAGE + '.conf')])
 
         if 'Settings' in config:
             settings = config["Settings"]
@@ -355,6 +372,8 @@ class DevkitService:
         self.httpd.server_activate()
 
     def publish(self):
+        """ Publish ourselves on avahi mdns system as an available devkit device.
+        """
         bus = dbus.SystemBus()
         self.text = [f"{CURRENT_TXTVERS}".encode(),
                      f"settings={json.dumps(self.settings)}".encode(),
@@ -379,9 +398,13 @@ class DevkitService:
         self.group = avahi_object
 
     def unpublish(self):
+        """ Remove publishing of ourselves as devkit device since we are quitting.
+        """
         self.group.Reset()
 
     def run_server(self):
+        """ Run server until keyboard interrupt or we are killed
+        """
         try:
             self.httpd.serve_forever()
         except KeyboardInterrupt:
