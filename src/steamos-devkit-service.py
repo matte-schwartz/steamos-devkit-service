@@ -52,13 +52,15 @@ PROPERTIES = {"txtvers": 1,
               "devkit1": [
                   ENTRY_POINT
               ]}
-MACHINE_NAME = ''
 HOOK_DIRS = []
 USE_DEFAULT_HOOKS = True
 
 
 def writefile(data: bytes) -> str:
-    """ Write given bytes to a temporary file and return the filename """
+    """ Write given bytes to a temporary file and return the filename
+
+    Return the empty string if unable to open temp file for some reason
+    """
 
     # Get 1 from the resulting tuple, since that's the filename
     filename = tempfile.mkstemp(prefix="devkit-", dir="/tmp/", text=True)[1]
@@ -68,13 +70,15 @@ def writefile(data: bytes) -> str:
         file.write(data.decode())
         file.close()
 
-    return filename
+        return filename
+
+    return ''
 
 
 def write_key(post_body: bytes) -> str:
     """ Write key to temp file and return filename if valid
 
-    Return None if invalid
+    Return the empty string if invalid
     """
     length = len(post_body)
     found_name = False
@@ -138,7 +142,8 @@ def write_key(post_body: bytes) -> str:
     data = body_decoded[:length]
     filename = writefile(data.encode())
 
-    print(f"Filename key written to: {filename}")
+    if filename:
+        print(f"Filename key written to: {filename}")
 
     return filename
 
@@ -178,22 +183,30 @@ def find_hook(name: str) -> str:
     return ''
 
 
-# Run devkit-1-identify hook to get hostname, otherwise use default platform.node()
-identify_hook = find_hook("devkit-1-identify")
-if identify_hook:
-    # Run hook and parse machine_name out
-    process = subprocess.Popen(identify_hook, shell=False, stdout=subprocess.PIPE)
-    OUTPUT = ''
-    for line in process.stdout:
-        textline = line.decode(encoding='utf-8', errors="ignore")
-        OUTPUT += textline
-    process.wait()
-    output_object = json.loads(OUTPUT)
-    if 'machine_name' in output_object:
-        MACHINE_NAME = output_object["machine_name"]
+def get_machine_name() -> str:
+    """ Get the machine name and return it in a string
 
-if not MACHINE_NAME:
-    MACHINE_NAME = platform.node()
+    Use identify hook first, and if that fails just get the hostname.
+    """
+    machine_name = ''
+    # Run devkit-1-identify hook to get hostname, otherwise use default platform.node()
+    identify_hook = find_hook("devkit-1-identify")
+    if identify_hook:
+        # Run hook and parse machine_name out
+        process = subprocess.Popen(identify_hook, shell=False, stdout=subprocess.PIPE)
+        output = ''
+        for line in process.stdout:
+            textline = line.decode(encoding='utf-8', errors="ignore")
+            output += textline
+        process.wait()
+        output_object = json.loads(output)
+        if 'machine_name' in output_object:
+            machine_name = output_object["machine_name"]
+
+    if not machine_name:
+        machine_name = platform.node()
+
+    return machine_name
 
 
 class DevkitHandler(BaseHTTPRequestHandler):
@@ -270,7 +283,7 @@ class DevkitHandler(BaseHTTPRequestHandler):
 
             approve_process.wait()
             approve_object = json.loads(approve_output)
-            if "error" in output_object:
+            if "error" in approve_object:
                 self._send_headers(403, "text/plain")
                 self.wfile.write("approve-ssh-key:\n".encode())
                 self.wfile.write(approve_object["error"].encode())
@@ -320,7 +333,7 @@ class DevkitService:
         global DEVICE_USERS
 
         self.port = SERVICE_PORT
-        self.name = MACHINE_NAME
+        self.name = get_machine_name()
         self.host = ""
         self.domain = ""
         self.stype = "_steamos-devkit._tcp"
@@ -366,7 +379,7 @@ class DevkitService:
 
         self.httpd = socketserver.TCPServer(("", self.port), DevkitHandler, bind_and_activate=False)
         print(f"serving at port: {self.port}")
-        print(f"machine name: {MACHINE_NAME}")
+        print(f"machine name: {self.name}")
         self.httpd.allow_reuse_address = True
         self.httpd.server_bind()
         self.httpd.server_activate()
