@@ -25,6 +25,7 @@
 
 from http.server import BaseHTTPRequestHandler
 import configparser
+import getpass
 import json
 import os
 import platform
@@ -365,7 +366,10 @@ class DevkitService:
                 if 'ShellUsers' in users:
                     DEVICE_USERS = users["ShellUsers"]
             else:
-                DEVICE_USERS = [os.getlogin()]
+                username = getpass.getuser()
+                print("Username: {username}")
+                DEVICE_USERS = []
+                DEVICE_USERS.append(username)
 
         # If only one user, that's the entry point user
         # Otherwise entry_point_user needs to be root to be able to switch between users
