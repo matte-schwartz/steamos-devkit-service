@@ -56,7 +56,7 @@ HOOK_DIRS = []
 USE_DEFAULT_HOOKS = True
 
 
-def writefile(data: bytes) -> str:
+def write_file(data: bytes) -> str:
     """ Write given bytes to a temporary file and return the filename
 
     Return the empty string if unable to open temp file for some reason
@@ -140,7 +140,7 @@ def write_key(post_body: bytes) -> str:
 
     # write data to the file
     data = body_decoded[:length]
-    filename = writefile(data.encode())
+    filename = write_file(data.encode())
 
     if filename:
         print(f"Filename key written to: {filename}")
@@ -246,8 +246,8 @@ class DevkitHandler(BaseHTTPRequestHandler):
             self._send_headers(404, "")
             return
 
-        self._send_headers(200, "text/html")
-        self.wfile.write("Get works\n".encode())
+        self._send_headers(404, "")
+        self.wfile.write("Unknown request\n".encode())
 
     def do_POST(self):
         """ Handle POST requests
