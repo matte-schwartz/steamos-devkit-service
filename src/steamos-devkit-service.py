@@ -62,15 +62,11 @@ def write_file(data: bytes) -> str:
     Return the empty string if unable to open temp file for some reason
     """
 
-    # Get 1 from the resulting tuple, since that's the filename
-    filename = tempfile.mkstemp(prefix="devkit-", dir="/tmp/", text=True)[1]
-
-    # Then open ourselves
-    with open(filename, "w", encoding='utf-8') as file:
+    with tempfile.NamedTemporaryFile(mode='w', prefix='devkit-1', encoding='utf-8',
+        delete=False) as file:
         file.write(data.decode())
-        file.close()
 
-        return filename
+        return file.name
 
     return ''
 
