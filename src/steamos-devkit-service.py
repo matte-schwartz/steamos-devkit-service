@@ -283,7 +283,7 @@ class DevkitHandler(BaseHTTPRequestHandler):
             if "error" in approve_object:
                 self._send_headers(403, "text/plain")
                 self.wfile.write("approve-ssh-key:\n".encode())
-                self.wfile.write(approve_object["error"].encode())
+                self.wfile.write(approve_output.encode())
                 os.unlink(filename)
                 return
 
