@@ -344,6 +344,7 @@ class DevkitService:
                      "/usr/share/steamos-devkit/steamos-devkit.conf",
                      os.path.join(os.path.expanduser('~'), '.config', PACKAGE, PACKAGE + '.conf')])
 
+        self.settings = {}
         if 'Settings' in config:
             settings = config["Settings"]
             self.settings = dict(settings)
