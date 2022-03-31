@@ -258,14 +258,14 @@ class DevkitHandler(BaseHTTPRequestHandler):
 
             if not filename:
                 self._send_headers(403, "text/plain")
-                self.wfile.write(b"Failed to write ssh key\n")
+                self.wfile.write(json.dumps({'error':'Failed to write the ssh key'}).encode())
                 return
 
             # Run approve script
             approve_hook = find_hook("approve-ssh-key")
             if not approve_hook:
                 self._send_headers(403, "text/plain")
-                self.wfile.write(b"Failed to find approve hook\n")
+                self.wfile.write(json.dumps({'error':'Failed to find approve hook'}).encode())
                 os.unlink(filename)
                 return
 
@@ -282,8 +282,7 @@ class DevkitHandler(BaseHTTPRequestHandler):
             approve_object = json.loads(approve_output)
             if "error" in approve_object:
                 self._send_headers(403, "text/plain")
-                self.wfile.write("approve-ssh-key:\n".encode())
-                self.wfile.write(approve_output.encode())
+                self.wfile.write(approve_output.encode()) # is already a json {'error':} response
                 os.unlink(filename)
                 return
 
@@ -291,7 +290,7 @@ class DevkitHandler(BaseHTTPRequestHandler):
             install_hook = find_hook("install-ssh-key")
             if not install_hook:
                 self._send_headers(403, "text-plain")
-                self.wfile.write(b"Failed to find install-ssh-key hook\n")
+                self.wfile.write(json.dumps({'error':'Failed to find install-ssh-key hook'}).encode())
                 os.unlink(filename)
                 return
 
