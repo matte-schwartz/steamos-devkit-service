@@ -15,28 +15,28 @@ if __name__ == '__main__':
 
     hackendeck = ( subprocess.run('grep -e "^ID=manjaro$" /etc/os-release', shell=True).returncode == 0 )
     if not hackendeck:
-        # plz send patches
+        # plz send patches towards support for other distros ..
         logger.info('Only supported on Manjaro - please check documentation')
         sys.exit(1)
 
     logger.info('======== Running hackendeck configuration checks ==========')
+
+    # some gross hack to escape the scout LD_* setup (causes pacman etc. tools to fail)
+    os.environ['LD_LIBRARY_PATH'] = ''
+
     assert os.path.exists(KSSHASKPASS)
     os.environ['SUDO_ASKPASS'] = KSSHASKPASS
-    # this goes pear shaped because of LD_* scout runtime
-    #need_tk = ( subprocess.run('pacman -Q tk', shell=True).returncode != 0 )
-    need_tk = not os.path.exists('/usr/lib/libtk.so')
-    if need_tk:
-        logger.info('Installing Tk library')
-        subprocess.check_call('sudo -A pacman --noconfirm -S tk', shell=True)
-    logger.info('Tk library is installed')
-    need_patch_sshd = ( subprocess.run(f'grep -e "^PubkeyAcceptedAlgorithms" {SSHD_CONFIG}', shell=True).returncode != 0 )
-    if need_patch_sshd:
-        logger.info('Patch sshd for old ssh-rsa hash')
-        subprocess.check_call('sudo -A bash -c \'echo -e "HostkeyAlgorithms +ssh-rsa\nPubkeyAcceptedAlgorithms +ssh-rsa\n" >> /etc/ssh/sshd_config\'', shell=True)
-    logger.info('sshd has been patched for old ssh-rsa hash')
+
     enable_sshd = ( subprocess.run('systemctl status sshd 2>&1 >/dev/null', shell=True).returncode != 0 )
     if enable_sshd:
         logger.info('sshd needs to be enabled')
         subprocess.check_call('sudo -A systemctl enable --now sshd', shell=True)
     logger.info('sshd is enabled')
+
+    # pretty sure those are installed by default, but just in case ..
+    install_packages = ( subprocess.run('pacman -Qi avahi dbus-python zenity >/dev/null', shell=True).returncode != 0 )
+    if install_packages:
+        logger.info('installing packages for the service')
+        subprocess.check_call('sudo -A pacman -S avahi dbus-python zenity', shell=True)
+
     logger.info('======== hackendeck configuration complete ==========')

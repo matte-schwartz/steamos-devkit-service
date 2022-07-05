@@ -4,14 +4,8 @@ set -o pipefail
 shopt -s failglob
 set -u
 
-# https://archived.forum.manjaro.org/t/tk-error-application-specific-initialization-failed-unknown-color-name-background/155675/2
-xrdb -load /dev/null
-
-GUI_FOLDER="$(cd $(dirname $0) && echo $PWD)"
-BIN_FOLDER=$(realpath ${GUI_FOLDER}/../bin)
-export PATH="${BIN_FOLDER}:$PATH"
-
-${BIN_FOLDER}/configure-hackendeck.py || exit 1
-
-exec ${GUI_FOLDER}/steam-devkit-gui.pyz
+TOP_FOLDER="$(cd $(dirname $0) && echo $PWD)"
+${TOP_FOLDER}/configure-hackendeck.py || exit 1
+HOOKS_FOLDER=${TOP_FOLDER}/hooks
+exec konsole -e ${TOP_FOLDER}/steamos-devkit-service.py --hooks ${HOOKS_FOLDER}
 

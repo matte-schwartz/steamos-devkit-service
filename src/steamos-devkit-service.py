@@ -33,9 +33,9 @@ import socketserver
 import subprocess
 import tempfile
 import urllib.parse
+import argparse
 
 import dbus
-
 import avahi
 
 SERVICE_PORT = 32000
@@ -53,8 +53,6 @@ PROPERTIES = {"txtvers": 1,
               "devkit1": [
                   ENTRY_POINT
               ]}
-HOOK_DIRS = []
-USE_DEFAULT_HOOKS = True
 
 
 def write_file(data: bytes) -> str:
@@ -150,33 +148,11 @@ def find_hook(name: str) -> str:
 
     Return the path to the hook if found. '' if not found
     """
-    # First see if it exists in the given paths.
-    for path in HOOK_DIRS:
-        test_path = os.path.join(path, name)
-        if os.path.exists(test_path) and os.access(test_path, os.X_OK):
-            return test_path
-
-    if not USE_DEFAULT_HOOKS:
-        print(f"Error: Unable to find hook for {name} in hook directories\n")
-        return ''
-
-    test_path = f"/etc/{PACKAGE}/hooks/{name}"
-    if os.path.exists(test_path) and os.access(test_path, os.X_OK):
-        return test_path
-
     test_path = f"{DEVKIT_HOOKS_DIR}/{name}"
     if os.path.exists(test_path) and os.access(test_path, os.X_OK):
         return test_path
 
-    test_path = f"{DEVKIT_HOOKS_DIR}/{name}.sample"
-    if os.path.exists(test_path) and os.access(test_path, os.X_OK):
-        return test_path
-
-    test_path = f"{os.path.dirname(os.path.realpath(__file__))}/../hooks/{name}"
-    if os.path.exists(test_path) and os.access(test_path, os.X_OK):
-        return test_path
-
-    print(f"Error:: Unable to find hook for {name} in /etc/{PACKAGE}/hooks or {DEVKIT_HOOKS_DIR}")
+    print(f"Error:: Unable to find hook for {name}")
     return ''
 
 
@@ -367,7 +343,7 @@ class DevkitService:
                     DEVICE_USERS = users["ShellUsers"]
             else:
                 username = getpass.getuser()
-                print("Username: {username}")
+                print(f'Username: {username}')
                 DEVICE_USERS = []
                 DEVICE_USERS.append(username)
 
@@ -428,6 +404,16 @@ class DevkitService:
 
 
 if __name__ == "__main__":
+    print(f'==========================')
+    print(f'  SteamOS Devkit Service')
+    print(f'==========================')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--hooks', required=False, action='store', help='hooks directory')
+    conf = parser.parse_args()
+
+    if conf.hooks is not None:
+        DEVKIT_HOOKS_DIR = conf.hooks
+
     service = DevkitService()
 
     service.publish()
