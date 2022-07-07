@@ -1,0 +1,12 @@
+"DepotBuildConfig"
+{
+        "DepotID" "935871"
+        "FileMapping"
+        {
+                "LocalPath" "../build/*"
+                "DepotPath" "."
+                "recursive" "1"
+        }
+        "FileExclusion" "*~"
+        "FileExclusion" "*.pyc"
+}
