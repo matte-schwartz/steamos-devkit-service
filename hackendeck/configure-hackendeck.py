@@ -39,4 +39,10 @@ if __name__ == '__main__':
         logger.info('installing packages for the service')
         subprocess.check_call('sudo -A pacman -S avahi dbus-python zenity', shell=True)
 
+    enable_avahi = ( subprocess.run('systemctl status avahi-daemon 2>&1 >/dev/null', shell=True).returncode != 0 )
+    if enable_avahi:
+        logger.info('avahi-daemon needs to be enabled')
+        subprocess.check_call('sudo -A systemctl enable --now avahi-daemon', shell=True)
+    logger.info('avahi-daemon is enabled')
+
     logger.info('======== hackendeck configuration complete ==========')
