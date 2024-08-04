@@ -64,12 +64,6 @@ if __name__ == '__main__':
         subprocess.check_call('sudo -A systemctl enable --now sshd', shell=True)
     logger.info('sshd is enabled')
 
-    # pretty sure those are installed by default, but just in case ..
-    install_packages = ( subprocess.run('pacman -Qi avahi dbus-python zenity >/dev/null', shell=True).returncode != 0 )
-    if install_packages:
-        logger.info('installing packages for the service')
-        install_packages()
-
     enable_avahi = ( subprocess.run('systemctl status avahi-daemon 2>&1 >/dev/null', shell=True).returncode != 0 )
     if enable_avahi:
         logger.info('avahi-daemon needs to be enabled')
