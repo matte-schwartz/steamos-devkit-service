@@ -9,14 +9,45 @@ import logging
 KSSHASKPASS = '/usr/bin/ksshaskpass'
 SSHD_CONFIG = '/etc/ssh/sshd_config'
 
+def check_distro_supported():
+    try:
+        with open('/etc/os-release', 'r') as f:
+            os_release = f.read()
+            if 'ID=manjaro' in os_release:
+                return True
+            for line in os_release.split('\n'):
+                if line.startswith('ID_LIKE'):
+                    if 'fedora' in line:
+                        return True
+    except FileNotFoundError:
+        return False
+    return False
+
+def install_packages():
+    # Check the package manager and install the necessary packages
+    try:
+        if subprocess.run('command -v pacman', shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).returncode == 0:
+            # Using pacman
+            packages = 'avahi dbus-python zenity'
+            subprocess.check_call(f'sudo -A pacman -S --noconfirm {packages}', shell=True)
+        elif subprocess.run('command -v dnf', shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).returncode == 0:
+            # Using dnf
+            packages = 'avahi dbus-python zenity'
+            subprocess.check_call(f'sudo dnf install -y {packages}', shell=True)
+        else:
+            logger.error('No supported package manager found.')
+            sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        logger.error(f'Failed to install packages: {e}')
+        sys.exit(1)
+
 if __name__ == '__main__':
     logging.basicConfig(format='%(message)s', level=logging.DEBUG)
     logger = logging.getLogger(__name__)
 
-    hackendeck = ( subprocess.run('grep -e "^ID=manjaro$" /etc/os-release', shell=True).returncode == 0 )
-    if not hackendeck:
+    if not check_distro_supported():
         # plz send patches towards support for other distros ..
-        logger.info('Only supported on Manjaro - please check documentation')
+        logger.info('Only supported on Manjaro and Fedora-based distros - please check documentation')
         sys.exit(1)
 
     logger.info('======== Running hackendeck configuration checks ==========')
@@ -34,10 +65,7 @@ if __name__ == '__main__':
     logger.info('sshd is enabled')
 
     # pretty sure those are installed by default, but just in case ..
-    install_packages = ( subprocess.run('pacman -Qi avahi dbus-python zenity >/dev/null', shell=True).returncode != 0 )
-    if install_packages:
-        logger.info('installing packages for the service')
-        subprocess.check_call('sudo -A pacman -S avahi dbus-python zenity', shell=True)
+    install_packages()
 
     enable_avahi = ( subprocess.run('systemctl status avahi-daemon 2>&1 >/dev/null', shell=True).returncode != 0 )
     if enable_avahi:
