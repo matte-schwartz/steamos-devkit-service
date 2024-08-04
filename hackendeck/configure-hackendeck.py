@@ -13,15 +13,17 @@ def check_distro_supported():
     try:
         with open('/etc/os-release', 'r') as f:
             os_release = f.read()
-            if 'ID=manjaro' in os_release:
-                return True
             for line in os_release.split('\n'):
-                if line.startswith('ID_LIKE'):
-                    if 'fedora' in line:
+                if line.startswith('ID='):
+                    if 'manjaro' in line:
+                        return True
+                if line.startswith('ID_LIKE='):
+                    if 'arch' in line or 'fedora' in line:
                         return True
     except FileNotFoundError:
         return False
     return False
+
 
 def install_packages():
     # Check the package manager and install the necessary packages
